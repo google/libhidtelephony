@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html style="height: 100%">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      .container {
+        width: 800px;
+        height: 800px;
+        position: absolute;
+        left: 50%;
+        transform: translate(-50%, 0%);
+        display: flex;
+        flex-direction: column;
+      }
+
+      button {
+        margin: 5px;
+      }
+
+      .row1 {
+        display: flex;
+        flex-direction: row;
+      }
+
+      #control-panel {
+        border: 2px black;
+        width: 60%;
+      }
+
+      .device-status {
+        border: 2px black;
+        width: 40%;
+      }
+
+      #input-report,
+      #output-report {
+        text-align: center;
+        margin: 10px;
+      }
+
+      #log {
+        text-align: left;
+        margin: 0 auto;
+        height: 300px;
+        width: 100%;
+        border: 1px solid #a7a7a7;
+        overflow-y: scroll;
+        border-radius: 4px;
+        border-bottom: 4px solid #a7a7a7;
+        word-wrap: break-word;
+      }
+
+      .log-date {
+        border-bottom: 1px solid black;
+        border-right: 1px solid black;
+      }
+
+      .log-msg {
+        border-bottom: 1px solid black;
+      }
+
+      .log-content {
+        display: inline-block;
+        white-space: pre;
+      }
+
+      #dialog {
+        /* display: show; */
+        position: fixed;
+        z-index: 1;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.4); /* Black w/ opacity */
+      }
+      #dialog-content {
+        background-color: white;
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        width: 400px;
+        height: 100px;
+        margin: -50px 0 0 -200px;
+      }
+      #dialog-content > p {
+        padding-left: 10px;
+        padding-bottom: 5px;
+      }
+      #dialog-content > button {
+        position: relative;
+        top: 0px;
+        left: 150px;
+      }
+    </style>
+    <title>HID Listener</title>
+    <script async src="./bundle.js" defer></script>
+    <div id="dialog" hidden>
+      <div id="dialog-content">
+        <p id="dialog-msg"></p>
+        <button id="dialog-yes" hidden>Yes</button>
+        <button id="dialog-no" hidden>No</button>
+      </div>
+    </div>
+    <br />
+
+    <div class="container">
+      <div class="row1">
+        <div id="control-panel">
+          <h3>Controls</h3>
+          <button id="start" type="button">Start</button>
+          <button id="copy" type="button">Copy Log</button>
+          <button id="clear" type="button">Clear Log</button>
+          <div id="output-controls" hidden></div>
+          <div id="test-cases" hidden></div>
+        </div>
+        <div class="device-status">
+          <h3>HID Device Status</h3>
+
+          <b>Input Reports - From device:</b><br />
+          <table id="input-report">
+            <colgroup span="3">
+              <col span="1" style="width: 40%" />
+              <col span="1" style="width: 30%" />
+              <col span="1" style="width: 30%" />
+            </colgroup>
+            <tr>
+              <th>Name</th>
+              <th>Support</th>
+              <th>IsToggle</th>
+            </tr>
+            <tr>
+              <td>Hook-Switch:</td>
+              <td><span>❓</span></td>
+              <td><span>❓</span></td>
+            </tr>
+            <tr>
+              <td>Phone-Mute:</td>
+              <td><span>❓</span></td>
+              <td><span>❓</span></td>
+            </tr>
+          </table>
+          <b>Output Reports - To device:</b><br />
+          <table id="output-report">
+            <colgroup span="2">
+              <col span="1" style="width: 40%" />
+              <col span="1" style="width: 30%" />
+              <col span="1" style="width: 30%" />
+            </colgroup>
+            <tr>
+              <th>Name</th>
+              <th>Support</th>
+            </tr>
+            <tr>
+              <td>Off-Hook:</td>
+              <td><span>❓</span></td>
+            </tr>
+            <tr>
+              <td>Ring:</td>
+              <td><span>❓</span></td>
+            </tr>
+            <tr>
+              <td>Mute:</td>
+              <td><span>❓</span></td>
+            </tr>
+            <tr>
+              <td>Ringer:</td>
+              <td><span>❓</span></td>
+            </tr>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h3>Log</h3>
+        <div id="log"></div>
+      </div>
+    </div>
+    <br />
+  </head>
+</html>

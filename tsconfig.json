@@ -1,0 +1,16 @@
+{
+  "extends": "./node_modules/gts/tsconfig-google.json",
+  "compilerOptions": {
+    "outDir": "./build/",
+    "moduleResolution": "node",
+    "downlevelIteration":true,
+    "lib": [
+      "dom",
+      "ESNext"
+    ],
+    "types": [
+      "node",
+      "w3c-web-hid"
+    ]
+  }
+}
