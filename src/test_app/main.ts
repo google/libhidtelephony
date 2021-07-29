@@ -316,7 +316,6 @@ async function offHookTestCase(deviceManager: TelephonyDeviceManager) {
   return true;
 }
 
-
 async function hookSwitchTestCase(deviceManager: TelephonyDeviceManager) {
   const waitForHookSwitch: (val: boolean) => void = (val: boolean) => {
     if (val) {
@@ -397,7 +396,9 @@ function verifyTestCasesFeasibility(deviceManager: TelephonyDeviceManager) {
     offHookBtn.onclick = async () => {
       appendLog('==== Start Test Case - Off-Hook ====');
       appendLog(
-        `Test result: ${(await offHookTestCase(deviceManager)) ? 'Pass' : 'Fail'}`
+        `Test result: ${
+          (await offHookTestCase(deviceManager)) ? 'Pass' : 'Fail'
+        }`
       );
     };
     offHookBtn.innerText = 'Off-Hook';

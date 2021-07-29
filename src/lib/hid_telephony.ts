@@ -25,15 +25,14 @@ import {
 } from './hid';
 import {Level, Logger} from './logger';
 
-const TELEPHONYDEVICEFILTERS: HIDDeviceFilter = {
+const TELEPHONY_DEVICE_FILTERS: HIDDeviceFilter = {
   usagePage: UsagePage.TELEPHONY,
 };
 
-/** Following signals are sent from the headset to the host. */
+/** Following signals are sent from the device to the host. */
 const INPUT_USAGES = [
   TelephonyUsage.HOOK_SWITCH,
   TelephonyUsage.PHONE_MUTE,
-  // TelephonyUsage.LINE_BUSY_TONE,
 ] as const;
 
 /** Input usages covered by the library. */
@@ -53,7 +52,7 @@ export interface ObserverCallback {
   (val: boolean): void;
 }
 
-/** Following signals are sent from the host to the headset. */
+/** Following signals are sent from the host to the device. */
 const OUTPUT_USAGES = [
   LedUsage.OFF_HOOK,
   LedUsage.RING,
@@ -96,17 +95,15 @@ export class TelephonyDeviceManager {
     this.logger = new Logger(verbose);
     this.logger.debug(device);
     this.inputEventInfos = INPUT_USAGES.reduce((record, usage) => {
-      record[usage] = undefined;
-      return record;
+      return {...record, [usage]: undefined};
     }, {} as Record<InputUsage, InputEventInfo | undefined>);
+
     this.inputEventObserverCallbacks = INPUT_USAGES.reduce((record, usage) => {
-      record[usage] = [];
-      return record;
+      return {...record, [usage]: []};
     }, {} as Record<InputUsage, ObserverCallback[]>);
 
     this.outputEventGenerators = OUTPUT_USAGES.reduce((templates, usage) => {
-      templates[usage] = undefined;
-      return templates;
+      return {...templates, [usage]: undefined};
     }, {} as Record<OutputUsage, OutputEventGenerator | undefined>);
 
     this.parseDeviceDescriptors();
@@ -124,7 +121,7 @@ export class TelephonyDeviceManager {
   static async create(verbose: Level = Level.INFO) {
     const hid = window.navigator.hid;
     const hidDevices = await hid.requestDevice({
-      filters: [TELEPHONYDEVICEFILTERS],
+      filters: [TELEPHONY_DEVICE_FILTERS],
     });
     if (hidDevices.length === 0) return null;
     return new TelephonyDeviceManager(hidDevices[0], verbose);
@@ -136,10 +133,10 @@ export class TelephonyDeviceManager {
         event.reportId
       } and data: ${new Uint8Array(event.data.buffer)}`
     );
-    INPUT_USAGES.forEach(usage => {
+    for (const usage of INPUT_USAGES) {
       const eventInfo = this.inputEventInfos[usage];
       if (eventInfo === undefined || event.reportId !== eventInfo.reportId) {
-        return;
+        continue;
       }
 
       const byteIndex = Math.trunc(eventInfo.offset / 8);
@@ -149,17 +146,17 @@ export class TelephonyDeviceManager {
 
       if (this.isInputToggle(usage)) {
         if (!eventInfo.previousVal && isSet) {
-          this.inputEventObserverCallbacks[usage].forEach(callback =>
-            callback(isSet)
-          );
+          for (const callback of this.inputEventObserverCallbacks[usage]) {
+            callback(isSet);
+          }
         }
         eventInfo.previousVal = isSet;
       } else {
-        this.inputEventObserverCallbacks[usage].forEach(callback =>
-          callback(isSet)
-        );
+        for (const callback of this.inputEventObserverCallbacks[usage]) {
+          callback(isSet);
+        }
       }
-    });
+    }
   }
 
   async open() {
@@ -279,7 +276,7 @@ export class TelephonyDeviceManager {
       }
 
       const length = offset;
-      outUsageOffsets.forEach(([usageId, offset]) => {
+      for (const [usageId, offset] of outUsageOffsets) {
         this.outputEventGenerators[usageId] = (val: boolean) => {
           const reportData = new Uint8Array(length / 8);
 
@@ -291,7 +288,7 @@ export class TelephonyDeviceManager {
 
           return {reportId: report.reportId!, data: reportData};
         };
-      });
+      }
     }
   }
 
@@ -316,9 +313,8 @@ export class TelephonyDeviceManager {
 
   /* Subscribe the Input event. */
   unsubscribe(usage: InputUsage, callback: ObserverCallback) {
-    const callbackIndex = this.inputEventObserverCallbacks[usage].indexOf(
-      callback
-    );
+    const callbackIndex =
+      this.inputEventObserverCallbacks[usage].indexOf(callback);
     if (callbackIndex === -1) {
       this.logger.error('Nonexistent callback.');
       return;

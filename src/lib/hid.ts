@@ -15,15 +15,13 @@
  *
  */
 
-/** Selected USB.org defineed UsagePages IDs. */
+/** Selected USB.org defined UsagePages IDs. */
 export enum UsagePage {
   LED = 0x08,
-  BUTTON = 0x09,
   TELEPHONY = 0x0b,
-  CONSUMER = 0x0c,
 }
 
-/** Selected USB.org defineed TelephonyUsage IDs. */
+/** Selected USB.org defined TelephonyUsage IDs. */
 export enum TelephonyUsage {
   PHONE = 0x01,
   PROGRAMMABLE_BUTTON = 0x07,
@@ -38,7 +36,7 @@ export enum TelephonyUsage {
   RINGER = 0x9e,
 }
 
-/** Selected USB.org defineed LedUsage IDs. */
+/** Selected USB.org defined LedUsage IDs. */
 export enum LedUsage {
   MUTE = 0x09,
   OFF_HOOK = 0x17,
@@ -58,10 +56,7 @@ export function getUsagePage(usage: number) {
 }
 
 function usagePageToString(usagePage: number) {
-  let str = 'UNKNOWN';
-  if (usagePage in UsagePage) {
-    str = UsagePage[usagePage];
-  }
+  const str = UsagePage[usagePage] ?? 'UNKNOWN';
   return `${str}(0x${usagePage.toString(16).padStart(2, '0')})`;
 }
 
@@ -71,19 +66,16 @@ function usagePageToString(usagePage: number) {
 export function usageToString(usage: number) {
   const usagePage = getUsagePage(usage);
   const usageId = getUsageId(usage);
-  let str = 'UNKNOWN';
+  let str: string;
   switch (usagePage) {
     case UsagePage.LED:
-      if (usageId in LedUsage) {
-        str = LedUsage[usageId];
-      }
+      str = LedUsage[usageId] ?? 'UNKNOWN';
       break;
     case UsagePage.TELEPHONY:
-      if (usageId in TelephonyUsage) {
-        str = TelephonyUsage[usageId];
-      }
+      str = TelephonyUsage[usageId] ?? 'UNKNOWN';
       break;
     default:
+      str = 'UNKNOWN';
       break;
   }
   return `${usagePageToString(usagePage)}.${str}(0x${usageId
