@@ -82,3 +82,46 @@ export function usageToString(usage: number) {
     .toString(16)
     .padStart(2, '0')})`;
 }
+
+export enum OnOffControlType {
+  Undefined = 0,
+  OnOffButtons,
+  ToggleButton,
+  ToggleSwitch,
+}
+
+export function getOnOffControlType(item: HIDReportItem) {
+  if (
+    item.isAbsolute === undefined ||
+    item.hasPreferredState === undefined ||
+    item.logicalMinimum === undefined ||
+    item.logicalMaximum === undefined
+  ) {
+    return OnOffControlType.Undefined;
+  }
+  if (
+    !item.isAbsolute &&
+    !item.hasPreferredState &&
+    item.logicalMinimum === -1 &&
+    item.logicalMaximum === 1
+  ) {
+    return OnOffControlType.OnOffButtons;
+  }
+  if (
+    !item.isAbsolute &&
+    item.hasPreferredState &&
+    item.logicalMinimum === 0 &&
+    item.logicalMaximum === 1
+  ) {
+    return OnOffControlType.ToggleButton;
+  }
+  if (
+    item.isAbsolute &&
+    !item.hasPreferredState &&
+    item.logicalMinimum === 0 &&
+    item.logicalMaximum === 1
+  ) {
+    return OnOffControlType.ToggleSwitch;
+  }
+  return OnOffControlType.Undefined;
+}

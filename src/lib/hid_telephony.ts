@@ -16,12 +16,14 @@
  */
 
 import {
-  getUsageId,
-  getUsagePage,
+  UsagePage,
   LedUsage,
   TelephonyUsage,
-  UsagePage,
+  getUsageId,
+  getUsagePage,
   usageToString,
+  OnOffControlType,
+  getOnOffControlType,
 } from './hid';
 import {Level, Logger} from './logger';
 
@@ -43,13 +45,12 @@ const isTelephonyInputUsage = (x: number): x is InputUsage =>
 interface InputEventInfo {
   reportId: number;
   offset: number;
-  isAbsolute: boolean;
-  previousVal: boolean;
+  controlType: OnOffControlType;
 }
 
 /** Interface of input event callback. */
 export interface ObserverCallback {
-  (val: boolean): void;
+  (val: boolean, controlType: OnOffControlType): void;
 }
 
 /** Following signals are sent from the host to the device. */
@@ -143,18 +144,8 @@ export class TelephonyDeviceManager {
       const bitPosition = eventInfo.offset % 8;
       const isSet =
         (event.data.getUint8(byteIndex) & (0x01 << bitPosition)) !== 0;
-
-      if (this.isInputToggle(usage)) {
-        if (!eventInfo.previousVal && isSet) {
-          for (const callback of this.inputEventObserverCallbacks[usage]) {
-            callback(isSet);
-          }
-        }
-        eventInfo.previousVal = isSet;
-      } else {
-        for (const callback of this.inputEventObserverCallbacks[usage]) {
-          callback(isSet);
-        }
+      for (const callback of this.inputEventObserverCallbacks[usage]) {
+        callback(isSet, eventInfo.controlType);
       }
     }
   }
@@ -220,7 +211,7 @@ export class TelephonyDeviceManager {
               this.inputEventInfos[usageId] = {
                 reportId: report.reportId,
                 offset: offset + i * item.reportSize,
-                isAbsolute: item.isAbsolute,
+                controlType: getOnOffControlType(item),
               } as InputEventInfo;
               this.logger.debug(
                 `InputReport: ${usageToString(usage)} `,
@@ -292,9 +283,9 @@ export class TelephonyDeviceManager {
     }
   }
 
-  isInputToggle(usage: InputUsage): boolean | undefined {
+  getControlType(usage: InputUsage): OnOffControlType | undefined {
     if (this.supportInput(usage)) {
-      return !this.inputEventInfos[usage]?.isAbsolute;
+      return this.inputEventInfos[usage]?.controlType;
     }
     return undefined;
   }
@@ -321,8 +312,57 @@ export class TelephonyDeviceManager {
     }
     this.inputEventObserverCallbacks[usage].splice(callbackIndex, 1);
   }
+  /* Send a Ring event to the device. */
+  sendRing(val: boolean) {
+    if (!this.device.opened) {
+      return;
+    }
+    const generator = this.outputEventGenerators[LedUsage.RING];
+    if (generator !== undefined) {
+      const report = generator(val);
+      this.device.sendReport(report.reportId, report.data);
+    }
+  }
 
-  /* Send an output event to the device. */
+  /* Trigger event(s) with both off-hook and mute state to the device. */
+  sendOffHookMute(offHook: boolean, mute: boolean) {
+    if (!this.device.opened) {
+      return;
+    }
+    const offHookGenerator = this.outputEventGenerators[LedUsage.OFF_HOOK];
+    const muteGenerator = this.outputEventGenerators[LedUsage.MUTE];
+
+    let report: OutputEventData | undefined;
+    if (offHookGenerator !== undefined && muteGenerator !== undefined) {
+      const offHookReport = offHookGenerator(offHook);
+      const muteReport = muteGenerator(mute);
+      if (offHookReport.reportId !== muteReport.reportId) {
+        this.device.sendReport(offHookReport?.reportId, offHookReport.data);
+        this.device.sendReport(muteReport?.reportId, muteReport.data);
+        return;
+      }
+
+      report = {
+        reportId: offHookReport.reportId,
+        data: new Uint8Array(offHookReport.data),
+      };
+      for (const [i, data] of muteReport.data.entries()) {
+        report.data[i] = muteReport.data[i] | data;
+      }
+    } else {
+      report = offHookGenerator?.(offHook) ?? muteGenerator?.(mute);
+    }
+
+    if (report) {
+      this.device.sendReport(report.reportId, report.data);
+    }
+  }
+
+  /**
+   * Send an output event to the device. This function only set single status
+   * in the report and thus may override other status. Should be used only
+   * for debugging or testing purpose.
+   */
   send(usage: OutputUsage, val: boolean) {
     if (!this.device.opened) {
       return;

@@ -15,7 +15,7 @@
  *
  */
 
-import {LedUsage, TelephonyUsage} from '../lib/hid';
+import {LedUsage, OnOffControlType, TelephonyUsage} from '../lib/hid';
 import {OutputUsage, TelephonyDeviceManager} from '../lib/hid_telephony';
 
 function copyLog() {
@@ -52,6 +52,10 @@ function appendLog(msg: string) {
   line.appendChild(content);
   log.appendChild(line);
   line.scrollIntoView();
+}
+
+function oocTypeToString(val: OnOffControlType | undefined): string {
+  return val ? OnOffControlType[val] : 'undefined';
 }
 
 function booleanToIcon(val: boolean | undefined): string {
@@ -110,26 +114,36 @@ function verifyInputReport(deviceManager: TelephonyDeviceManager) {
   hookSwitch.cells[1].innerText = booleanToIcon(
     deviceManager.supportInput(TelephonyUsage.HOOK_SWITCH)
   );
-  hookSwitch.cells[2].innerText = booleanToIcon(
-    deviceManager.isInputToggle(TelephonyUsage.HOOK_SWITCH)
+  hookSwitch.cells[2].innerText = oocTypeToString(
+    deviceManager.getControlType(TelephonyUsage.HOOK_SWITCH)
   );
   if (deviceManager.supportInput(TelephonyUsage.HOOK_SWITCH)) {
-    deviceManager.subscribe(TelephonyUsage.HOOK_SWITCH, (val: boolean) => {
-      appendLog(`Received: HookSwitch(${val})`);
-    });
+    deviceManager.subscribe(
+      TelephonyUsage.HOOK_SWITCH,
+      (val: boolean, type: OnOffControlType) => {
+        appendLog(
+          `Received: HookSwitch(${val}) as type ${oocTypeToString(type)}`
+        );
+      }
+    );
   }
 
   const phoneMute = inputReportTable.rows[2];
   phoneMute.cells[1].innerText = booleanToIcon(
     deviceManager.supportInput(TelephonyUsage.PHONE_MUTE)
   );
-  phoneMute.cells[2].innerText = booleanToIcon(
-    deviceManager.isInputToggle(TelephonyUsage.PHONE_MUTE)
+  phoneMute.cells[2].innerText = oocTypeToString(
+    deviceManager.getControlType(TelephonyUsage.PHONE_MUTE)
   );
   if (deviceManager.supportInput(TelephonyUsage.PHONE_MUTE)) {
-    deviceManager.subscribe(TelephonyUsage.PHONE_MUTE, (val: boolean) => {
-      appendLog(`Received: PhoneMute(${val})`);
-    });
+    deviceManager.subscribe(
+      TelephonyUsage.PHONE_MUTE,
+      (val: boolean, type: OnOffControlType) => {
+        appendLog(
+          `Received: PhoneMute(${val}) as type ${oocTypeToString(type)}`
+        );
+      }
+    );
   }
 
   appendLog('Input Event Support:');
@@ -154,9 +168,6 @@ function verifyOutputReport(deviceManager: TelephonyDeviceManager) {
   );
   outputReportTable.rows[3].cells[1].innerText = booleanToIcon(
     deviceManager.supportOutput(LedUsage.MUTE)
-  );
-  outputReportTable.rows[4].cells[1].innerText = booleanToIcon(
-    deviceManager.supportOutput(TelephonyUsage.RINGER)
   );
 
   const outputCtrl = document.getElementById(
@@ -215,26 +226,31 @@ function verifyOutputReport(deviceManager: TelephonyDeviceManager) {
 
 async function ringTestCase(deviceManager: TelephonyDeviceManager) {
   const callStatusIndicator: boolean = await confirmYesNo(
-    'Is there a Call Status Indicator?'
+    'Ring, step 1 of 3:\n' +
+      'Does the DUT design an indicator (LED) for Call Status?'
   );
   appendLog(`With a call status indicator: ${callStatusIndicator}`);
   if (!callStatusIndicator) {
     return true;
   }
 
-  deviceManager.send(LedUsage.RING, true);
+  deviceManager.sendRing(true);
   if (
     !(await confirmYesNo(
-      'Does the indicator show a call ringing? \n (Wait for a few seconds)'
+      'Ring, step 2 of 3:\n' +
+        '1. The app is triggering an event for the indicator to turn on. (Wait for few seconds.)\n' +
+        '2. Does the indicator (LED) show an Ringing Call?'
     ))
   ) {
     return false;
   }
 
-  deviceManager.send(LedUsage.RING, false);
+  deviceManager.sendRing(false);
   if (
     !(await confirmYesNo(
-      'Does the indicator change to no call? \n (Wait for a few seconds)'
+      'Ring, step 3 of 3:\n' +
+        '1. The app is triggering an event for the indicator to turn off. (Wait for few seconds.)\n' +
+        '2. Does the indicator (LED) change to No Call?'
     ))
   ) {
     return false;
@@ -244,17 +260,20 @@ async function ringTestCase(deviceManager: TelephonyDeviceManager) {
 
 async function muteTestCase(deviceManager: TelephonyDeviceManager) {
   const statusIndicator: boolean = await confirmYesNo(
-    'Is there a microphone status Indicator?'
+    'Mute, step 1 of 5:\n' +
+      'Does the DUT design an indicator (LED) for Microphone Mute Status?'
   );
   appendLog(`With a microphone status indicator: ${statusIndicator}`);
   if (!statusIndicator) {
     return true;
   }
 
-  deviceManager.send(LedUsage.MUTE, true);
+  deviceManager.sendOffHookMute(false, true);
   if (
     !(await confirmYesNo(
-      'Does the indicator show the microphone is muted? \n (Wait for a few seconds)'
+      'Mute, step 2 of 5:\n' +
+        '1. The app is triggering an event for the indicator to turn on. (Wait for few seconds.)\n' +
+        '2. Does the indicator (LED) show the microphone is mute?'
     ))
   ) {
     return false;
@@ -262,16 +281,20 @@ async function muteTestCase(deviceManager: TelephonyDeviceManager) {
 
   if (
     !(await confirmYesNo(
-      'Is the microphone muted? \n (Use another tab to record to verify)'
+      'Mute, step 3 of 5:\n' +
+        '1. Please use another tab to a recorder to verify if the microphone is muted.\n' +
+        '2. Is the DUT microphone muted?'
     ))
   ) {
     return false;
   }
 
-  deviceManager.send(LedUsage.MUTE, false);
+  deviceManager.sendOffHookMute(false, false);
   if (
     !(await confirmYesNo(
-      'Does the indicator change to not muted? \n (Wait for a few seconds)'
+      'Mute, step 4 of 5:\n' +
+        '1. The app is triggering an event for the indicator to turn off. (Wait for few seconds.)\n' +
+        '2. Does the indicator (LED) change to not muted?'
     ))
   ) {
     return false;
@@ -279,7 +302,9 @@ async function muteTestCase(deviceManager: TelephonyDeviceManager) {
 
   if (
     !(await confirmYesNo(
-      'Is the microphone unmuted? \n (Use another tab to record to verify)'
+      'Mute, step 5 of 5:\n' +
+        '1. Please use another tab to a recorder to verify if the microphone is un-muted.\n' +
+        '2. Is the DUT microphone unmuted?'
     ))
   ) {
     return false;
@@ -289,26 +314,32 @@ async function muteTestCase(deviceManager: TelephonyDeviceManager) {
 
 async function offHookTestCase(deviceManager: TelephonyDeviceManager) {
   const callStatusIndicator: boolean = await confirmYesNo(
-    'Is there a Call Status Indicator?'
+    'Off Hook, step 1 of 3:\n' +
+      'Does the DUT design an indicator (LED) for Call Status?'
   );
   appendLog(`With a call status indicator: ${callStatusIndicator}`);
   if (!callStatusIndicator) {
+    appendLog('May skip the test');
     return true;
   }
 
-  deviceManager.send(LedUsage.OFF_HOOK, true);
+  deviceManager.sendOffHookMute(true, false);
   if (
     !(await confirmYesNo(
-      'Does the indicator show an active call? \n (Wait for a few seconds)'
+      'Off Hook, step 2 of 3:\n' +
+        '1. The app is triggering an event for the indicator to turn on. (Wait for few seconds.)\n' +
+        '2. Does the indicator (LED) show an Active Call?'
     ))
   ) {
     return false;
   }
 
-  deviceManager.send(LedUsage.OFF_HOOK, false);
+  deviceManager.sendOffHookMute(false, false);
   if (
     !(await confirmYesNo(
-      'Does the indicator change to no call? \n (Wait for a few seconds)'
+      'Off Hook, step 3 of 3:\n' +
+        '1. The app is triggering an event for the indicator to turn off. (Wait for few seconds.)\n' +
+        '2. Does the indicator (LED) change to No Call?'
     ))
   ) {
     return false;
@@ -317,59 +348,76 @@ async function offHookTestCase(deviceManager: TelephonyDeviceManager) {
 }
 
 async function hookSwitchTestCase(deviceManager: TelephonyDeviceManager) {
-  const waitForHookSwitch: (val: boolean) => void = (val: boolean) => {
-    if (val) {
+  const controlType = deviceManager.getControlType(TelephonyUsage.HOOK_SWITCH);
+  const waitForHookSwitch = (val: boolean, type: OnOffControlType) => {
+    if (type === OnOffControlType.ToggleButton && val) {
       deviceManager.unsubscribe(TelephonyUsage.HOOK_SWITCH, waitForHookSwitch);
       yesCallback();
+    } else if (type === OnOffControlType.ToggleSwitch && val) {
+      deviceManager.unsubscribe(TelephonyUsage.HOOK_SWITCH, waitForHookSwitch);
+      yesCallback();
+    } else {
+      noCallback();
     }
   };
 
   appendLog('Test catch:');
   appendLog('Send Led.OffHook(0)');
-  deviceManager.send(LedUsage.OFF_HOOK, false);
+  deviceManager.sendOffHookMute(false, false);
   appendLog('Send Led.Ring(1)');
-  deviceManager.send(LedUsage.RING, true);
-  appendLog('Send Telephony.RINGER(1)');
-  deviceManager.send(TelephonyUsage.RINGER, true);
+  deviceManager.sendRing(true);
   deviceManager.subscribe(TelephonyUsage.HOOK_SWITCH, waitForHookSwitch);
   if (
     !(await confirmYesNo(
-      'Does pressing the button trigger HookSwitch(true)? \n (Press the hook switch button and wait)',
+      'Hook Switch, Step 1 of 2:\n' +
+        'Check the status of Hook Switch is True:\n ' +
+        '1. Press the Hook Switch button and wait.\n' +
+        '2. In the log, does HookSwitch(true) appear?\n',
       true
     ))
   ) {
     deviceManager.unsubscribe(TelephonyUsage.HOOK_SWITCH, waitForHookSwitch);
-    deviceManager.send(LedUsage.RING, false);
-    deviceManager.send(TelephonyUsage.RINGER, false);
-    deviceManager.send(LedUsage.OFF_HOOK, false);
+    deviceManager.sendRing(false);
+    deviceManager.sendOffHookMute(false, false);
     return false;
   }
-  deviceManager.send(LedUsage.RING, false);
-  deviceManager.send(TelephonyUsage.RINGER, false);
+  deviceManager.sendRing(false);
 
   appendLog('Test hang up:');
   appendLog('Send Led.OffHook(1)');
-  deviceManager.send(LedUsage.OFF_HOOK, true);
-  const waitForHangUp: (val: boolean) => void = (val: boolean) => {
-    if (!val) {
+  deviceManager.sendOffHookMute(true, false);
+  const waitForHangUp = (val: boolean, type: OnOffControlType) => {
+    if (type === OnOffControlType.ToggleButton && val) {
       deviceManager.unsubscribe(TelephonyUsage.HOOK_SWITCH, waitForHangUp);
       yesCallback();
+    } else if (type === OnOffControlType.ToggleSwitch && !val) {
+      deviceManager.unsubscribe(TelephonyUsage.HOOK_SWITCH, waitForHangUp);
+      yesCallback();
+    } else {
+      noCallback();
     }
   };
 
   deviceManager.subscribe(TelephonyUsage.HOOK_SWITCH, waitForHangUp);
   if (
     !(await confirmYesNo(
-      'Does pressing the button trigger HookSwitch(false)? \n (Press the hook switch button and wait)',
+      'Hook Switch, Step 2 of 2:\n' +
+        `Check the status of Hook Switch is ${
+          controlType === OnOffControlType.ToggleButton
+        }:\n ` +
+        '1. Press the Hook Switch button and wait.\n' +
+        `2. In the log, does HookSwitch(${
+          controlType === OnOffControlType.ToggleButton
+        }) appear?\n`,
       true
     ))
   ) {
-    deviceManager.send(LedUsage.OFF_HOOK, false);
+    deviceManager.sendOffHookMute(false, false);
     deviceManager.unsubscribe(TelephonyUsage.HOOK_SWITCH, waitForHangUp);
     return false;
   }
   appendLog('Send Led.OffHook(0)');
-  deviceManager.send(LedUsage.OFF_HOOK, false);
+  deviceManager.sendOffHookMute(false, false);
   return true;
 }
 
