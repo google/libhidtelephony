@@ -68,13 +68,24 @@ export type OutputUsage = typeof OUTPUT_USAGES[number];
 const isTelephonyOutputUsage = (x: number): x is OutputUsage =>
   OUTPUT_USAGES.includes(x);
 
+interface OutputEventInfo {
+  reportId: number;
+  state: boolean;
+  generator: OutputEventGenerator;
+  setter: OutputEventDataSetter;
+}
+
 interface OutputEventData {
   reportId: number;
   data: Uint8Array;
 }
 
 interface OutputEventGenerator {
-  (val: boolean): OutputEventData;
+  (): OutputEventData;
+}
+
+interface OutputEventDataSetter {
+  (val: boolean, data: Uint8Array): Uint8Array;
 }
 
 /**
@@ -87,10 +98,7 @@ export class TelephonyDeviceManager {
   private inputEventInfos: Record<InputUsage, InputEventInfo | undefined>;
   private inputEventObserverCallbacks: Record<InputUsage, ObserverCallback[]>;
 
-  private outputEventGenerators: Record<
-    OutputUsage,
-    OutputEventGenerator | undefined
-  >;
+  private outputEventInfos: Record<OutputUsage, OutputEventInfo | undefined>;
 
   private constructor(readonly device: HIDDevice, verbose: Level) {
     this.logger = new Logger(verbose);
@@ -103,9 +111,9 @@ export class TelephonyDeviceManager {
       return {...record, [usage]: []};
     }, {} as Record<InputUsage, ObserverCallback[]>);
 
-    this.outputEventGenerators = OUTPUT_USAGES.reduce((templates, usage) => {
-      return {...templates, [usage]: undefined};
-    }, {} as Record<OutputUsage, OutputEventGenerator | undefined>);
+    this.outputEventInfos = OUTPUT_USAGES.reduce((record, usage) => {
+      return {...record, [usage]: undefined};
+    }, {} as Record<OutputUsage, OutputEventInfo | undefined>);
 
     this.parseDeviceDescriptors();
     this.open();
@@ -119,7 +127,7 @@ export class TelephonyDeviceManager {
    * Create a TelephonyDeviceManager instance for a selected telephony device.
    * Returns null if none is selected.
    */
-  static async create(verbose: Level = Level.INFO) {
+  static async create(verbose: Level = Level.DEBUG) {
     const hid = window.navigator.hid;
     const hidDevices = await hid.requestDevice({
       filters: [TELEPHONY_DEVICE_FILTERS],
@@ -268,17 +276,22 @@ export class TelephonyDeviceManager {
 
       const length = offset;
       for (const [usageId, offset] of outUsageOffsets) {
-        this.outputEventGenerators[usageId] = (val: boolean) => {
-          const reportData = new Uint8Array(length / 8);
-
-          if (offset >= 0 && val) {
-            const byteIndex = Math.trunc(offset / 8);
-            const bitPosition = offset % 8;
-            reportData[byteIndex] = 1 << bitPosition;
-          }
-
-          return {reportId: report.reportId!, data: reportData};
-        };
+        this.outputEventInfos[usageId] = {
+          reportId: report.reportId,
+          state: false,
+          generator: () => {
+            const reportData = new Uint8Array(length / 8);
+            return {reportId: report.reportId!, data: reportData};
+          },
+          setter: (val: boolean, data: Uint8Array) => {
+            if (offset >= 0) {
+              const byteIndex = Math.trunc(offset / 8);
+              const bitPosition = offset % 8;
+              data[byteIndex] |= (val ? 1 : 0) << bitPosition;
+            }
+            return data;
+          },
+        } as OutputEventInfo;
       }
     }
   }
@@ -295,7 +308,7 @@ export class TelephonyDeviceManager {
   }
 
   supportOutput(usage: OutputUsage): boolean {
-    return this.outputEventGenerators[usage] !== undefined;
+    return this.outputEventInfos[usage] !== undefined;
   }
 
   subscribe(usage: InputUsage, callback: ObserverCallback) {
@@ -312,65 +325,71 @@ export class TelephonyDeviceManager {
     }
     this.inputEventObserverCallbacks[usage].splice(callbackIndex, 1);
   }
-  /* Send a Ring event to the device. */
-  sendRing(val: boolean) {
+
+  setState(usage: OutputUsage, val: boolean) {
     if (!this.device.opened) {
       return;
     }
-    const generator = this.outputEventGenerators[LedUsage.RING];
-    if (generator !== undefined) {
-      const report = generator(val);
-      this.device.sendReport(report.reportId, report.data);
+
+    const info = this.outputEventInfos[usage];
+
+    if (info !== undefined) {
+      info.state = val;
     }
+
+    return;
   }
 
-  /* Trigger event(s) with both off-hook and mute state to the device. */
-  sendOffHookMute(offHook: boolean, mute: boolean) {
+  getState(usage: OutputUsage): boolean | undefined {
+    this.logger.debug(`this.device.opened ${this.device.opened}`);
     if (!this.device.opened) {
-      return;
-    }
-    const offHookGenerator = this.outputEventGenerators[LedUsage.OFF_HOOK];
-    const muteGenerator = this.outputEventGenerators[LedUsage.MUTE];
-
-    let report: OutputEventData | undefined;
-    if (offHookGenerator !== undefined && muteGenerator !== undefined) {
-      const offHookReport = offHookGenerator(offHook);
-      const muteReport = muteGenerator(mute);
-      if (offHookReport.reportId !== muteReport.reportId) {
-        this.device.sendReport(offHookReport?.reportId, offHookReport.data);
-        this.device.sendReport(muteReport?.reportId, muteReport.data);
-        return;
-      }
-
-      report = {
-        reportId: offHookReport.reportId,
-        data: new Uint8Array(offHookReport.data),
-      };
-      for (const [i, data] of muteReport.data.entries()) {
-        report.data[i] = muteReport.data[i] | data;
-      }
-    } else {
-      report = offHookGenerator?.(offHook) ?? muteGenerator?.(mute);
+      return undefined;
     }
 
-    if (report) {
-      this.device.sendReport(report.reportId, report.data);
-    }
+    this.logger.debug(`GetState ${this.outputEventInfos[usage]?.state}`);
+    return this.outputEventInfos[usage]?.state;
   }
 
-  /**
-   * Send an output event to the device. This function only set single status
-   * in the report and thus may override other status. Should be used only
-   * for debugging or testing purpose.
-   */
-  send(usage: OutputUsage, val: boolean) {
+  /* Send output events to the device.  */
+  send(usages: Map<OutputUsage, boolean>) {
     if (!this.device.opened) {
       return;
     }
-    const generator = this.outputEventGenerators[usage];
-    if (generator !== undefined) {
-      const report = generator(val);
-      this.device.sendReport(report.reportId, report.data);
+
+    const outputReports: Array<OutputEventData> = [];
+    for (const [usage, val] of usages) {
+      this.logger.debug(`usage: ${usage}, val: ${val}`);
+      const eventInfo = this.outputEventInfos[usage];
+      if (eventInfo === undefined) {
+        continue;
+      }
+
+      const existingReport = outputReports.find(
+        report => report.reportId === eventInfo?.reportId
+      );
+      if (existingReport === undefined) {
+        outputReports.push(eventInfo?.generator());
+      }
+      eventInfo.state = val;
     }
+
+    outputReports.forEach(report => {
+      OUTPUT_USAGES.forEach(usage => {
+        const eventInfo = this.outputEventInfos[usage];
+        if (
+          eventInfo === undefined ||
+          eventInfo.reportId !== report.reportId ||
+          !eventInfo.state
+        ) {
+          return;
+        }
+
+        report.data = eventInfo.setter(eventInfo.state, report.data);
+      });
+      this.logger.debug(
+        `Send report with reportId: ${report.reportId} data: ${report.data}`
+      );
+      this.device.sendReport(report.reportId, report.data);
+    });
   }
 }

@@ -18,6 +18,8 @@
 import {LedUsage, OnOffControlType, TelephonyUsage} from '../lib/hid';
 import {OutputUsage, TelephonyDeviceManager} from '../lib/hid_telephony';
 
+let refreshTimerId: number;
+
 function copyLog() {
   const logs = Array.from(document.getElementsByClassName('log-content'))
     .map(log => (log as HTMLSpanElement).innerText)
@@ -81,6 +83,7 @@ async function waitUserInput() {
   while (!dialogValReady) await timeout(100);
   dialogValReady = false;
 }
+
 const dialog = document.getElementById('dialog')!;
 const yesBtn = document.getElementById('dialog-yes')!;
 const yesCallback = () => {
@@ -169,6 +172,22 @@ function verifyOutputReport(deviceManager: TelephonyDeviceManager) {
   outputReportTable.rows[3].cells[1].innerText = booleanToIcon(
     deviceManager.supportOutput(LedUsage.MUTE)
   );
+  outputReportTable.rows[4].cells[1].innerText = booleanToIcon(
+    deviceManager.supportOutput(TelephonyUsage.RINGER)
+  );
+
+  outputReportTable.rows[1].cells[2].innerText = booleanToIcon(
+    deviceManager.getState(LedUsage.OFF_HOOK)
+  );
+  outputReportTable.rows[2].cells[2].innerText = booleanToIcon(
+    deviceManager.getState(LedUsage.RING)
+  );
+  outputReportTable.rows[3].cells[2].innerText = booleanToIcon(
+    deviceManager.getState(LedUsage.MUTE)
+  );
+  outputReportTable.rows[4].cells[2].innerText = booleanToIcon(
+    deviceManager.getState(TelephonyUsage.RINGER)
+  );
 
   const outputCtrl = document.getElementById(
     'output-controls'
@@ -192,7 +211,7 @@ function verifyOutputReport(deviceManager: TelephonyDeviceManager) {
     for (const val of [1, 0]) {
       const btn = row.cells[1].children[1 - val]! as HTMLButtonElement;
       btn.addEventListener('click', () => {
-        deviceManager.send(usage, val === 1);
+        deviceManager.send(new Map<OutputUsage, boolean>([[usage, val === 1]]));
         appendLog(`Send a ${title}(${val}) event`);
       });
     }
@@ -224,6 +243,24 @@ function verifyOutputReport(deviceManager: TelephonyDeviceManager) {
   );
 }
 
+async function refreshState(deviceManager: TelephonyDeviceManager) {
+  const outputReportTable = document.getElementById(
+    'output-report'
+  )! as HTMLTableElement;
+  outputReportTable.rows[1].cells[2].innerText = booleanToIcon(
+    deviceManager.getState(LedUsage.OFF_HOOK)
+  );
+  outputReportTable.rows[2].cells[2].innerText = booleanToIcon(
+    deviceManager.getState(LedUsage.RING)
+  );
+  outputReportTable.rows[3].cells[2].innerText = booleanToIcon(
+    deviceManager.getState(LedUsage.MUTE)
+  );
+  outputReportTable.rows[4].cells[2].innerText = booleanToIcon(
+    deviceManager.getState(TelephonyUsage.RINGER)
+  );
+}
+
 async function ringTestCase(deviceManager: TelephonyDeviceManager) {
   const callStatusIndicator: boolean = await confirmYesNo(
     'Ring, step 1 of 3:\n' +
@@ -234,7 +271,7 @@ async function ringTestCase(deviceManager: TelephonyDeviceManager) {
     return true;
   }
 
-  deviceManager.sendRing(true);
+  deviceManager.send(new Map<OutputUsage, boolean>([[LedUsage.RING, true]]));
   if (
     !(await confirmYesNo(
       'Ring, step 2 of 3:\n' +
@@ -245,7 +282,7 @@ async function ringTestCase(deviceManager: TelephonyDeviceManager) {
     return false;
   }
 
-  deviceManager.sendRing(false);
+  deviceManager.send(new Map<OutputUsage, boolean>([[LedUsage.RING, false]]));
   if (
     !(await confirmYesNo(
       'Ring, step 3 of 3:\n' +
@@ -268,7 +305,13 @@ async function muteTestCase(deviceManager: TelephonyDeviceManager) {
     return true;
   }
 
-  deviceManager.sendOffHookMute(false, true);
+  appendLog('Send Led.OffHook(1) Led.Mute(1)');
+  deviceManager.send(
+    new Map<OutputUsage, boolean>([
+      [LedUsage.OFF_HOOK, true],
+      [LedUsage.MUTE, true],
+    ])
+  );
   if (
     !(await confirmYesNo(
       'Mute, step 2 of 5:\n' +
@@ -289,7 +332,12 @@ async function muteTestCase(deviceManager: TelephonyDeviceManager) {
     return false;
   }
 
-  deviceManager.sendOffHookMute(false, false);
+  deviceManager.send(
+    new Map<OutputUsage, boolean>([
+      [LedUsage.OFF_HOOK, false],
+      [LedUsage.MUTE, false],
+    ])
+  );
   if (
     !(await confirmYesNo(
       'Mute, step 4 of 5:\n' +
@@ -322,8 +370,18 @@ async function offHookTestCase(deviceManager: TelephonyDeviceManager) {
     appendLog('May skip the test');
     return true;
   }
-
-  deviceManager.sendOffHookMute(true, false);
+  deviceManager.send(
+    new Map<OutputUsage, boolean>([
+      [LedUsage.OFF_HOOK, true],
+      [LedUsage.MUTE, false],
+    ])
+  );
+  deviceManager.send(
+    new Map<OutputUsage, boolean>([
+      [LedUsage.OFF_HOOK, true],
+      [LedUsage.MUTE, false],
+    ])
+  );
   if (
     !(await confirmYesNo(
       'Off Hook, step 2 of 3:\n' +
@@ -334,7 +392,12 @@ async function offHookTestCase(deviceManager: TelephonyDeviceManager) {
     return false;
   }
 
-  deviceManager.sendOffHookMute(false, false);
+  deviceManager.send(
+    new Map<OutputUsage, boolean>([
+      [LedUsage.OFF_HOOK, false],
+      [LedUsage.MUTE, false],
+    ])
+  );
   if (
     !(await confirmYesNo(
       'Off Hook, step 3 of 3:\n' +
@@ -350,22 +413,29 @@ async function offHookTestCase(deviceManager: TelephonyDeviceManager) {
 async function hookSwitchTestCase(deviceManager: TelephonyDeviceManager) {
   const controlType = deviceManager.getControlType(TelephonyUsage.HOOK_SWITCH);
   const waitForHookSwitch = (val: boolean, type: OnOffControlType) => {
-    if (type === OnOffControlType.ToggleButton && val) {
-      deviceManager.unsubscribe(TelephonyUsage.HOOK_SWITCH, waitForHookSwitch);
-      yesCallback();
-    } else if (type === OnOffControlType.ToggleSwitch && val) {
-      deviceManager.unsubscribe(TelephonyUsage.HOOK_SWITCH, waitForHookSwitch);
-      yesCallback();
-    } else {
+    if (
+      !val ||
+      (type !== OnOffControlType.ToggleSwitch &&
+        type !== OnOffControlType.ToggleButton)
+    ) {
       noCallback();
+      return;
     }
-  };
 
+    yesCallback();
+    deviceManager.unsubscribe(TelephonyUsage.HOOK_SWITCH, waitForHookSwitch);
+    appendLog('Send Led.OffHook(1) and Led.Ring(0)');
+    deviceManager.send(
+      new Map<OutputUsage, boolean>([
+        [LedUsage.OFF_HOOK, true],
+        [LedUsage.RING, false],
+      ])
+    );
+  };
   appendLog('Test catch:');
-  appendLog('Send Led.OffHook(0)');
-  deviceManager.sendOffHookMute(false, false);
   appendLog('Send Led.Ring(1)');
-  deviceManager.sendRing(true);
+
+  deviceManager.send(new Map<OutputUsage, boolean>([[LedUsage.RING, true]]));
   deviceManager.subscribe(TelephonyUsage.HOOK_SWITCH, waitForHookSwitch);
   if (
     !(await confirmYesNo(
@@ -377,15 +447,13 @@ async function hookSwitchTestCase(deviceManager: TelephonyDeviceManager) {
     ))
   ) {
     deviceManager.unsubscribe(TelephonyUsage.HOOK_SWITCH, waitForHookSwitch);
-    deviceManager.sendRing(false);
-    deviceManager.sendOffHookMute(false, false);
+    deviceManager.send(new Map<OutputUsage, boolean>([[LedUsage.RING, false]]));
     return false;
   }
-  deviceManager.sendRing(false);
+
+  await new Promise(f => setTimeout(f, 1000));
 
   appendLog('Test hang up:');
-  appendLog('Send Led.OffHook(1)');
-  deviceManager.sendOffHookMute(true, false);
   const waitForHangUp = (val: boolean, type: OnOffControlType) => {
     if (type === OnOffControlType.ToggleButton && val) {
       deviceManager.unsubscribe(TelephonyUsage.HOOK_SWITCH, waitForHangUp);
@@ -412,12 +480,22 @@ async function hookSwitchTestCase(deviceManager: TelephonyDeviceManager) {
       true
     ))
   ) {
-    deviceManager.sendOffHookMute(false, false);
+    deviceManager.send(
+      new Map<OutputUsage, boolean>([
+        [LedUsage.OFF_HOOK, false],
+        [LedUsage.MUTE, false],
+      ])
+    );
     deviceManager.unsubscribe(TelephonyUsage.HOOK_SWITCH, waitForHangUp);
     return false;
   }
   appendLog('Send Led.OffHook(0)');
-  deviceManager.sendOffHookMute(false, false);
+  deviceManager.send(
+    new Map<OutputUsage, boolean>([
+      [LedUsage.OFF_HOOK, false],
+      [LedUsage.MUTE, false],
+    ])
+  );
   return true;
 }
 
@@ -490,6 +568,12 @@ async function main() {
       appendLog('Failed to create the TelephonyDeviceManager');
       return;
     }
+    if (refreshTimerId) {
+      window.clearInterval(refreshTimerId);
+    }
+
+    refreshTimerId = window.setInterval(refreshState, 1000, deviceManager);
+
     reset();
 
     appendLog(`DUT name: ${deviceManager.device.productName}`);

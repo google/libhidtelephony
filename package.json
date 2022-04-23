@@ -1,6 +1,6 @@
 {
   "name": "libhidtelephony",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "A package to support USB HID telephony through WebHID",
   "keywords": [],
   "license": "Apache-2.0",
