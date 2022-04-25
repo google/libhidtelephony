@@ -18,26 +18,43 @@
 /** Logger levels */
 export enum Level {
   OFF = 0,
+  ERROR,
   INFO,
   DEBUG,
 }
 
 /** Logger class used to log different level of logs */
 export class Logger {
+  /**
+   * Constructor logger that only print logs with verbosity
+   * that are higher than the speficied level.
+   * @param {Levle} level
+   */
   constructor(readonly level: Level = Level.INFO) {}
 
+  /**
+   * Print info level logs.
+   * @param {unknown[]} logs
+   */
   info(...logs: unknown[]) {
     if (this.level < Level.INFO) return;
     console.log(...logs);
   }
-
+  /**
+   * Print debug level logs.
+   * @param {unknown[]} logs
+   */
   debug(...logs: unknown[]) {
     if (this.level < Level.DEBUG) return;
     console.log(...logs);
   }
 
+  /**
+   * Print error level logs.
+   * @param {unknown[]} logs
+   */
   error(...logs: unknown[]) {
-    if (this.level === Level.OFF) return;
+    if (this.level < Level.ERROR) return;
     console.error(...logs);
   }
 }

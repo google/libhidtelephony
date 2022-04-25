@@ -50,7 +50,7 @@ interface InputEventInfo {
 
 /** Interface of input event callback. */
 export interface ObserverCallback {
-  (val: boolean, controlType: OnOffControlType): void;
+  (val: boolean, controlType: OnOffControlType);
 }
 
 /** Following signals are sent from the host to the device. */
@@ -100,6 +100,11 @@ export class TelephonyDeviceManager {
 
   private outputEventInfos: Record<OutputUsage, OutputEventInfo | undefined>;
 
+  /**
+   * Construct a TelephonyDeviceManager for the given HIDDevice
+   * @param {HIDDevice} device The device to interact with.
+   * @param {Level} verbose The verbose level of the logger.
+   */
   private constructor(readonly device: HIDDevice, verbose: Level) {
     this.logger = new Logger(verbose);
     this.logger.debug(device);
@@ -118,14 +123,15 @@ export class TelephonyDeviceManager {
     this.parseDeviceDescriptors();
     this.open();
 
-    this.device.addEventListener('inputreport', e =>
+    this.device.addEventListener('inputreport', (e) =>
       this.onInputReport(e as HIDInputReportEvent)
     );
   }
 
   /**
    * Create a TelephonyDeviceManager instance for a selected telephony device.
-   * Returns null if none is selected.
+   * @param {Level} verbose The verbose level of the logger.
+   * @return {TelephonyDeviceManager} Returns null if none is selected.
    */
   static async create(verbose: Level = Level.DEBUG) {
     const hid = window.navigator.hid;
@@ -136,11 +142,14 @@ export class TelephonyDeviceManager {
     return new TelephonyDeviceManager(hidDevices[0], verbose);
   }
 
+  /**
+   * Callbackto handle the input report from the connected device.
+   * @param {HIDInputReportEvent} event The triggered input event.
+   */
   private onInputReport(event: HIDInputReportEvent) {
     this.logger.debug(
-      `Receive an event with reportId ${
-        event.reportId
-      } and data: ${new Uint8Array(event.data.buffer)}`
+        `Receive an event with reportId ${event.reportId
+        } and data: ${new Uint8Array(event.data.buffer)}`
     );
     for (const usage of INPUT_USAGES) {
       const eventInfo = this.inputEventInfos[usage];
@@ -158,28 +167,36 @@ export class TelephonyDeviceManager {
     }
   }
 
-  async open() {
+  /**
+   * Open the device.
+   */
+  async open(): Promise<void> {
     if (!this.device.opened) {
       this.logger.info(`Open device :${this.device.productName}`);
       await this.device.open();
     }
   }
 
-  async close() {
+  /**
+   * Close the device
+   */
+  async close(): Promise<void> {
     if (!this.device.opened) {
       await this.device.close();
     }
   }
 
-  /* Parse USB descriptors for reading/writing reports from/to the device. */
-  private async parseDeviceDescriptors() {
+  /**
+   *  Parse USB descriptors for reading/writing reports from/to the device.
+   */
+  private async parseDeviceDescriptors(): Promise<void> {
     if (this.device.collections === undefined) {
       this.logger.error('Undefined device collection');
       throw new Error('Undefined device collection');
     }
 
     const telephonyCollection = this.device.collections.find(
-      collection => collection.usagePage === UsagePage.TELEPHONY
+        (collection) => collection.usagePage === UsagePage.TELEPHONY
     );
 
     if (telephonyCollection === undefined) {
@@ -195,6 +212,10 @@ export class TelephonyDeviceManager {
     }
   }
 
+  /**
+   * Helper to parse the input report.
+   * @param {HIDReportInfo[]} inputReports The array of input reports.
+   */
   private parseInputReport(inputReports: HIDReportInfo[]) {
     for (const report of inputReports) {
       let offset = 0;
@@ -222,10 +243,10 @@ export class TelephonyDeviceManager {
                 controlType: getOnOffControlType(item),
               } as InputEventInfo;
               this.logger.debug(
-                `InputReport: ${usageToString(usage)} `,
-                `reportId: ${report.reportId} `,
-                `offset: ${offset + i * item.reportSize} `,
-                `isAbsolute: ${item.isAbsolute}`
+                  `InputReport: ${usageToString(usage)} `,
+                  `reportId: ${report.reportId} `,
+                  `offset: ${offset + i * item.reportSize} `,
+                  `isAbsolute: ${item.isAbsolute}`
               );
             }
           }
@@ -235,6 +256,10 @@ export class TelephonyDeviceManager {
     }
   }
 
+  /**
+   * Helper to parse the output report.
+   * @param {HIDReportInfo[]} outputReports The array of output reports.
+   */
   private parseOutputReport(outputReports: HIDReportInfo[]) {
     for (const report of outputReports) {
       if (report.items === undefined || report.reportId === undefined) {
@@ -264,9 +289,9 @@ export class TelephonyDeviceManager {
             if (isTelephonyOutputUsage(usageId)) {
               outUsageOffsets.push([usageId, offset + i * item.reportSize]);
               this.logger.debug(
-                `OutputReport: ${usageToString(usage)} reportId:${
-                  report.reportId
-                } offset: ${offset + i * item.reportSize}`
+                  `OutputReport: ${usageToString(usage)} `,
+                  `reportId:${report.reportId} `,
+                  `offset: ${offset + i * item.reportSize}`
               );
             }
           }
@@ -281,7 +306,7 @@ export class TelephonyDeviceManager {
           state: false,
           generator: () => {
             const reportData = new Uint8Array(length / 8);
-            return {reportId: report.reportId!, data: reportData};
+            return {reportId: report.reportId, data: reportData};
           },
           setter: (val: boolean, data: Uint8Array) => {
             if (offset >= 0) {
@@ -296,26 +321,49 @@ export class TelephonyDeviceManager {
     }
   }
 
+  /**
+   * Get which type the input control is for given input usage.
+   * @param {InputUsage} usage
+   * @return {OnOffControlType|undefined}
+   */
   getControlType(usage: InputUsage): OnOffControlType | undefined {
     if (this.supportInput(usage)) {
       return this.inputEventInfos[usage]?.controlType;
     }
     return undefined;
   }
-
+  /**
+   * Get if the input usage is supported by the device.
+   * @param {InputUsage} usage The input usage to query.
+   * @return {boolean}
+   */
   supportInput(usage: InputUsage): boolean {
     return this.inputEventInfos[usage] !== undefined;
   }
 
+  /**
+   * Get if the output usage is supported by the device.
+   * @param {OutputUsage} usage
+   * @return {boolean}
+   */
   supportOutput(usage: OutputUsage): boolean {
     return this.outputEventInfos[usage] !== undefined;
   }
 
+  /**
+   * Subscribe a callback to the input event with specified usage.
+   * @param {InputUsage} usage
+   * @param {ObserverCallback} callback
+   */
   subscribe(usage: InputUsage, callback: ObserverCallback) {
     this.inputEventObserverCallbacks[usage].push(callback);
   }
 
-  /* Subscribe the Input event. */
+  /**
+   * Unsubscribe a callback from the input event with specified usage.
+   * @param {InputUsage} usage
+   * @param {ObserverCallback} callback
+   */
   unsubscribe(usage: InputUsage, callback: ObserverCallback) {
     const callbackIndex =
       this.inputEventObserverCallbacks[usage].indexOf(callback);
@@ -326,6 +374,11 @@ export class TelephonyDeviceManager {
     this.inputEventObserverCallbacks[usage].splice(callbackIndex, 1);
   }
 
+  /**
+   * Set the host state of the output usage.
+   * @param {OutputUsage} usage
+   * @param {boolean} val
+   */
   setState(usage: OutputUsage, val: boolean) {
     if (!this.device.opened) {
       return;
@@ -340,6 +393,11 @@ export class TelephonyDeviceManager {
     return;
   }
 
+  /**
+   * Get the host state of the output usage.
+   * @param {OutputUsage} usage
+   * @return {boolean|undefined} Undefined if not supported.
+   */
   getState(usage: OutputUsage): boolean | undefined {
     this.logger.debug(`this.device.opened ${this.device.opened}`);
     if (!this.device.opened) {
@@ -350,7 +408,10 @@ export class TelephonyDeviceManager {
     return this.outputEventInfos[usage]?.state;
   }
 
-  /* Send output events to the device.  */
+  /**
+   * Send output events to the device.
+   * @param {Map<OutputUsage, boolean>} usages Usages to set.
+   */
   send(usages: Map<OutputUsage, boolean>) {
     if (!this.device.opened) {
       return;
@@ -365,30 +426,28 @@ export class TelephonyDeviceManager {
       }
 
       const existingReport = outputReports.find(
-        report => report.reportId === eventInfo?.reportId
-      );
+          (report) => report.reportId === eventInfo?.reportId);
       if (existingReport === undefined) {
         outputReports.push(eventInfo?.generator());
       }
       eventInfo.state = val;
     }
 
-    outputReports.forEach(report => {
-      OUTPUT_USAGES.forEach(usage => {
+    outputReports.forEach((report) => {
+      OUTPUT_USAGES.forEach((usage) => {
         const eventInfo = this.outputEventInfos[usage];
-        if (
-          eventInfo === undefined ||
+        if (eventInfo === undefined ||
           eventInfo.reportId !== report.reportId ||
-          !eventInfo.state
-        ) {
+          !eventInfo.state) {
           return;
         }
 
         report.data = eventInfo.setter(eventInfo.state, report.data);
       });
       this.logger.debug(
-        `Send report with reportId: ${report.reportId} data: ${report.data}`
-      );
+          `Send report with `,
+          `reportId: ${report.reportId} `,
+          `data: ${report.data}`);
       this.device.sendReport(report.reportId, report.data);
     });
   }

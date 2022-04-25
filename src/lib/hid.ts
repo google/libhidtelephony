@@ -44,26 +44,40 @@ export enum LedUsage {
   HOLD = 0x20,
   MICROPHONE = 0x21,
 }
-
-/** Get the usage id from usage field. */
-export function getUsageId(usage: number) {
+/**
+ * Get the usage ID from usage field.
+ * @param {number} usage
+ * @return {number} usageId
+ */
+export function getUsageId(usage: number): number {
   return usage & 0xffff;
 }
 
-/** Get the usage page id from usage field. */
-export function getUsagePage(usage: number) {
+/**
+ * Get the usage page ID from usage field.
+ * @param {number} usage
+ * @return {number} usagePage
+ */
+export function getUsagePage(usage: number): number {
   return usage >>> 16;
 }
 
-function usagePageToString(usagePage: number) {
+/**
+ * Convert the usage page ID to string.
+ * @param {number} usagePage
+ * @return {string}
+ */
+function usagePageToString(usagePage: number): string {
   const str = UsagePage[usagePage] ?? 'UNKNOWN';
   return `${str}(0x${usagePage.toString(16).padStart(2, '0')})`;
 }
 
 /**
  * Cast usage field to human readable string. This only handle usages we care.
+ * @param {number} usage
+ * @return {string}
  */
-export function usageToString(usage: number) {
+export function usageToString(usage: number): string {
   const usagePage = getUsagePage(usage);
   const usageId = getUsageId(usage);
   let str: string;
@@ -79,8 +93,8 @@ export function usageToString(usage: number) {
       break;
   }
   return `${usagePageToString(usagePage)}.${str}(0x${usageId
-    .toString(16)
-    .padStart(2, '0')})`;
+      .toString(16)
+      .padStart(2, '0')})`;
 }
 
 export enum OnOffControlType {
@@ -89,8 +103,12 @@ export enum OnOffControlType {
   ToggleButton,
   ToggleSwitch,
 }
-
-export function getOnOffControlType(item: HIDReportItem) {
+/**
+ * Get the type of the on/off control of the given report item.
+ * @param {HIDReportItem} item
+ * @return {OnOffControlType} type
+ */
+export function getOnOffControlType(item: HIDReportItem) : OnOffControlType {
   if (
     item.isAbsolute === undefined ||
     item.hasPreferredState === undefined ||

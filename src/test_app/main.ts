@@ -20,22 +20,34 @@ import {OutputUsage, TelephonyDeviceManager} from '../lib/hid_telephony';
 
 let refreshTimerId: number;
 
+/**
+ * Copy log to clipboard.
+ */
 function copyLog() {
   const logs = Array.from(document.getElementsByClassName('log-content'))
-    .map(log => (log as HTMLSpanElement).innerText)
-    .join('\n');
+      .map((log) => (log as HTMLSpanElement).innerText)
+      .join('\n');
   if (logs) {
     navigator.clipboard.writeText(logs);
   }
 }
 
+/**
+ * Clear the log.
+ */
 function clearLog() {
-  const log = document.getElementById('log')! as HTMLDivElement;
-  log.innerHTML = '';
+  const log = document.getElementById('log') as HTMLDivElement;
+  if (log) {
+    log.innerHTML = '';
+  }
 }
 
+/**
+ * Helper to append messages to log.
+ * @param {string} msg
+ */
 function appendLog(msg: string) {
-  const log = document.getElementById('log')! as HTMLDivElement;
+  const log = document.getElementById('log') as HTMLDivElement;
   const line = document.createElement('div');
   const date = document.createElement('span');
   const content = document.createElement('span');
@@ -56,52 +68,93 @@ function appendLog(msg: string) {
   line.scrollIntoView();
 }
 
+/**
+ * Helper to convert OnOffControlType to string.
+ * @param { OnOffControlType | undefined} val
+ * @return {string}
+ */
 function oocTypeToString(val: OnOffControlType | undefined): string {
   return val ? OnOffControlType[val] : 'undefined';
 }
 
+/**
+ * Helper to convert boolean to an utf-8 icon.
+ * @param { OnOffControlType | undefined} val
+ * @return {string}
+ */
 function booleanToIcon(val: boolean | undefined): string {
   if (val === undefined) return '❓';
   return val ? '✅' : '❌';
 }
 
+/**
+ * Reset the app.
+ */
 function reset() {
-  const outputCtrl = document.getElementById('output-controls')!;
-  outputCtrl.hidden = true;
-  outputCtrl.innerHTML = '<h4>Output Controls</h4>';
+  const outputCtrl = document.getElementById('output-controls') ?? undefined;
 
-  const testCases = document.getElementById('test-cases')!;
-  testCases.hidden = true;
-  testCases.innerHTML = '<h4>Test Cases</h4>';
+  if (outputCtrl !== undefined) {
+    outputCtrl.hidden = true;
+    outputCtrl.innerHTML = '<h4>Output Controls</h4>';
+  }
+
+  const testCases = document.getElementById('test-cases') ?? undefined;
+  if (testCases !== undefined) {
+    testCases.hidden = true;
+    testCases.innerHTML = '<h4>Test Cases</h4>';
+  }
   clearLog();
 }
 
-const timeout = async (ms: number) => new Promise(res => setTimeout(res, ms));
+const timeout = async (ms: number) => new Promise((res) => setTimeout(res, ms));
 let dialogValReady = false;
 
-async function waitUserInput() {
+/**
+ * Helper to wait for user's input event.
+ */
+async function waitUserInput(): Promise<void> {
   while (!dialogValReady) await timeout(100);
   dialogValReady = false;
 }
 
-const dialog = document.getElementById('dialog')!;
-const yesBtn = document.getElementById('dialog-yes')!;
-const yesCallback = () => {
-  dialog.setAttribute('val', 'true');
-  dialogValReady = true;
-  dialog.hidden = true;
-};
-yesBtn.onclick = yesCallback;
-const noBtn = document.getElementById('dialog-no')!;
-const noCallback = () => {
-  dialog.setAttribute('val', 'false');
-  dialogValReady = true;
-  dialog.hidden = true;
-};
-noBtn.onclick = noCallback;
+const dialog = document.getElementById('dialog') ?? undefined;
+const yesBtn = document.getElementById('dialog-yes') ?? undefined;
+const noBtn = document.getElementById('dialog-no') ?? undefined;
+let yesCallback = undefined;
+let noCallback = undefined;
+if (dialog !== undefined && yesBtn !== undefined && noBtn !== undefined) {
+  yesCallback = () => {
+    dialog.setAttribute('val', 'true');
+    dialogValReady = true;
+    dialog.hidden = true;
+  };
+  yesBtn.onclick = yesCallback;
 
-async function confirmYesNo(msg: string, hideYes = false) {
-  document.getElementById('dialog-msg')!.innerText = msg;
+  noCallback = () => {
+    dialog.setAttribute('val', 'false');
+    dialogValReady = true;
+    dialog.hidden = true;
+  };
+  noBtn.onclick = noCallback;
+}
+
+/**
+ * Helper to show a dialog with yes/no button and hint messages
+ * @param {string} msg Message to show on the dialog.
+ * @param {boolean} hideYes Whether to hide the yes button.
+ * @return {boolean}
+ */
+async function confirmYesNo(msg: string, hideYes = false): Promise<boolean> {
+  const dialogMsg = document.getElementById('dialog-msg');
+  if (
+    dialogMsg === undefined ||
+    yesBtn === undefined ||
+    noBtn === undefined ||
+    dialog == undefined
+  ) {
+    return false;
+  }
+  dialogMsg.innerText = msg;
   yesBtn.hidden = hideYes;
   noBtn.hidden = false;
   dialog.hidden = false;
@@ -109,96 +162,106 @@ async function confirmYesNo(msg: string, hideYes = false) {
   return dialog.getAttribute('val') === 'true';
 }
 
+/**
+ * Helper to verify and show verification result of the device's input reports.
+ * @param {TelephonyDeviceManager} deviceManager
+ */
 function verifyInputReport(deviceManager: TelephonyDeviceManager) {
   const inputReportTable = document.getElementById(
-    'input-report'
-  )! as HTMLTableElement;
-  const hookSwitch = inputReportTable.rows[1];
-  hookSwitch.cells[1].innerText = booleanToIcon(
-    deviceManager.supportInput(TelephonyUsage.HOOK_SWITCH)
+      'input-report'
+  ) as HTMLTableElement;
+  const hookSwitchRow = inputReportTable.rows[1];
+  hookSwitchRow.cells[1].innerText = booleanToIcon(
+      deviceManager.supportInput(TelephonyUsage.HOOK_SWITCH)
   );
-  hookSwitch.cells[2].innerText = oocTypeToString(
-    deviceManager.getControlType(TelephonyUsage.HOOK_SWITCH)
+  hookSwitchRow.cells[2].innerText = oocTypeToString(
+      deviceManager.getControlType(TelephonyUsage.HOOK_SWITCH)
   );
   if (deviceManager.supportInput(TelephonyUsage.HOOK_SWITCH)) {
     deviceManager.subscribe(
-      TelephonyUsage.HOOK_SWITCH,
-      (val: boolean, type: OnOffControlType) => {
-        appendLog(
-          `Received: HookSwitch(${val}) as type ${oocTypeToString(type)}`
-        );
-      }
+        TelephonyUsage.HOOK_SWITCH,
+        (val: boolean, type: OnOffControlType) => {
+          appendLog(
+              `Received: HookSwitch(${val}) as type ${oocTypeToString(type)}`
+          );
+        }
     );
   }
 
-  const phoneMute = inputReportTable.rows[2];
-  phoneMute.cells[1].innerText = booleanToIcon(
-    deviceManager.supportInput(TelephonyUsage.PHONE_MUTE)
+  const phoneMuteRow = inputReportTable.rows[2];
+  phoneMuteRow.cells[1].innerText = booleanToIcon(
+      deviceManager.supportInput(TelephonyUsage.PHONE_MUTE)
   );
-  phoneMute.cells[2].innerText = oocTypeToString(
-    deviceManager.getControlType(TelephonyUsage.PHONE_MUTE)
+  phoneMuteRow.cells[2].innerText = oocTypeToString(
+      deviceManager.getControlType(TelephonyUsage.PHONE_MUTE)
   );
   if (deviceManager.supportInput(TelephonyUsage.PHONE_MUTE)) {
     deviceManager.subscribe(
-      TelephonyUsage.PHONE_MUTE,
-      (val: boolean, type: OnOffControlType) => {
-        appendLog(
-          `Received: PhoneMute(${val}) as type ${oocTypeToString(type)}`
-        );
-      }
+        TelephonyUsage.PHONE_MUTE,
+        (val: boolean, type: OnOffControlType) => {
+          appendLog(
+              `Received: PhoneMute(${val}) as type ${oocTypeToString(type)}`
+          );
+        }
     );
   }
 
+  const hookSwitch = deviceManager.supportInput(TelephonyUsage.HOOK_SWITCH);
   appendLog('Input Event Support:');
+  appendLog(`    Hook-Switch: ${hookSwitch}`);
   appendLog(
-    `    Hook-Switch: ${deviceManager.supportInput(TelephonyUsage.HOOK_SWITCH)}`
-  );
-  appendLog(
-    `    Phone-Mute: ${deviceManager.supportInput(TelephonyUsage.PHONE_MUTE)}`
+      `    Phone-Mute: ${deviceManager.supportInput(TelephonyUsage.PHONE_MUTE)}`
   );
 }
-
+/**
+ * Helper to verify and show verification result of the device's output reports.
+ * @param {TelephonyDeviceManager} deviceManager
+ */
 function verifyOutputReport(deviceManager: TelephonyDeviceManager) {
-  const outputReportTable = document.getElementById(
-    'output-report'
-  )! as HTMLTableElement;
+  const outputReportTable = document.
+      getElementById('output-report') as HTMLTableElement;
 
   outputReportTable.rows[1].cells[1].innerText = booleanToIcon(
-    deviceManager.supportOutput(LedUsage.OFF_HOOK)
+      deviceManager.supportOutput(LedUsage.OFF_HOOK)
   );
   outputReportTable.rows[2].cells[1].innerText = booleanToIcon(
-    deviceManager.supportOutput(LedUsage.RING)
+      deviceManager.supportOutput(LedUsage.RING)
   );
   outputReportTable.rows[3].cells[1].innerText = booleanToIcon(
-    deviceManager.supportOutput(LedUsage.MUTE)
+      deviceManager.supportOutput(LedUsage.MUTE)
   );
   outputReportTable.rows[4].cells[1].innerText = booleanToIcon(
-    deviceManager.supportOutput(TelephonyUsage.RINGER)
+      deviceManager.supportOutput(TelephonyUsage.RINGER)
   );
 
   outputReportTable.rows[1].cells[2].innerText = booleanToIcon(
-    deviceManager.getState(LedUsage.OFF_HOOK)
+      deviceManager.getState(LedUsage.OFF_HOOK)
   );
   outputReportTable.rows[2].cells[2].innerText = booleanToIcon(
-    deviceManager.getState(LedUsage.RING)
+      deviceManager.getState(LedUsage.RING)
   );
   outputReportTable.rows[3].cells[2].innerText = booleanToIcon(
-    deviceManager.getState(LedUsage.MUTE)
+      deviceManager.getState(LedUsage.MUTE)
   );
   outputReportTable.rows[4].cells[2].innerText = booleanToIcon(
-    deviceManager.getState(TelephonyUsage.RINGER)
+      deviceManager.getState(TelephonyUsage.RINGER)
   );
 
-  const outputCtrl = document.getElementById(
-    'output-controls'
-  )! as HTMLDivElement;
+  const outputCtrl = document
+      .getElementById('output-controls') as HTMLDivElement;
 
   const controlTable = document.createElement('table') as HTMLTableElement;
   outputCtrl.appendChild(controlTable);
+  /**
+   * Helper to insert controls to trigger output usage events.
+   * @param {TelephonyDeviceManager} deviceManager
+   * @param {string} title
+   * @param {OutputUsage} usage
+   */
   function insertControls(
-    deviceManager: TelephonyDeviceManager,
-    title: String,
-    usage: OutputUsage
+      deviceManager: TelephonyDeviceManager,
+      title: string,
+      usage: OutputUsage
   ) {
     const row = controlTable.insertRow();
     row.innerHTML = `
@@ -209,7 +272,7 @@ function verifyOutputReport(deviceManager: TelephonyDeviceManager) {
         </td>
       `;
     for (const val of [1, 0]) {
-      const btn = row.cells[1].children[1 - val]! as HTMLButtonElement;
+      const btn = row.cells[1].children[1 - val] as HTMLButtonElement;
       btn.addEventListener('click', () => {
         deviceManager.send(new Map<OutputUsage, boolean>([[usage, val === 1]]));
         appendLog(`Send a ${title}(${val}) event`);
@@ -232,39 +295,49 @@ function verifyOutputReport(deviceManager: TelephonyDeviceManager) {
 
   appendLog('Output Event Support:');
   appendLog(
-    `    Led.Off-Hook: ${deviceManager.supportOutput(LedUsage.OFF_HOOK)}`
+      `    Led.Off-Hook: ${deviceManager.supportOutput(LedUsage.OFF_HOOK)}`
   );
   appendLog(`    Led.Ring: ${deviceManager.supportOutput(LedUsage.RING)}`);
   appendLog(`    Led.Mute: ${deviceManager.supportOutput(LedUsage.MUTE)}`);
   appendLog(
-    `    Telephony.Ringer: ${deviceManager.supportOutput(
-      TelephonyUsage.RINGER
-    )}`
+      `    Telephony.Ringer: ${deviceManager.supportOutput(
+          TelephonyUsage.RINGER
+      )}`
   );
 }
 
+/**
+ * Refresth the state column on output-report table.
+ * @param {TelephonyDeviceManager} deviceManager
+ */
 async function refreshState(deviceManager: TelephonyDeviceManager) {
   const outputReportTable = document.getElementById(
-    'output-report'
-  )! as HTMLTableElement;
+      'output-report'
+  ) as HTMLTableElement;
   outputReportTable.rows[1].cells[2].innerText = booleanToIcon(
-    deviceManager.getState(LedUsage.OFF_HOOK)
+      deviceManager.getState(LedUsage.OFF_HOOK)
   );
   outputReportTable.rows[2].cells[2].innerText = booleanToIcon(
-    deviceManager.getState(LedUsage.RING)
+      deviceManager.getState(LedUsage.RING)
   );
   outputReportTable.rows[3].cells[2].innerText = booleanToIcon(
-    deviceManager.getState(LedUsage.MUTE)
+      deviceManager.getState(LedUsage.MUTE)
   );
   outputReportTable.rows[4].cells[2].innerText = booleanToIcon(
-    deviceManager.getState(TelephonyUsage.RINGER)
+      deviceManager.getState(TelephonyUsage.RINGER)
   );
 }
 
-async function ringTestCase(deviceManager: TelephonyDeviceManager) {
+/**
+ * Test case for LED.Ring indicator.
+ * @param {TelephonyDeviceManager} deviceManager
+ * @return {boolean}
+ */
+async function ringTestCase(
+    deviceManager: TelephonyDeviceManager): Promise<boolean> {
   const callStatusIndicator: boolean = await confirmYesNo(
-    'Ring, step 1 of 3:\n' +
-      'Does the DUT design an indicator (LED) for Call Status?'
+      'Ring, step 1 of 3:\n' +
+    'Does the DUT design an indicator (LED) for Call Status?'
   );
   appendLog(`With a call status indicator: ${callStatusIndicator}`);
   if (!callStatusIndicator) {
@@ -274,9 +347,10 @@ async function ringTestCase(deviceManager: TelephonyDeviceManager) {
   deviceManager.send(new Map<OutputUsage, boolean>([[LedUsage.RING, true]]));
   if (
     !(await confirmYesNo(
-      'Ring, step 2 of 3:\n' +
-        '1. The app is triggering an event for the indicator to turn on. (Wait for few seconds.)\n' +
-        '2. Does the indicator (LED) show an Ringing Call?'
+        'Ring, step 2 of 3:\n' +
+      '1. The app is triggering an event for the indicator to turn on. ' +
+      '(Wait for few seconds.)\n' +
+      '2. Does the indicator (LED) show an Ringing Call?'
     ))
   ) {
     return false;
@@ -285,9 +359,10 @@ async function ringTestCase(deviceManager: TelephonyDeviceManager) {
   deviceManager.send(new Map<OutputUsage, boolean>([[LedUsage.RING, false]]));
   if (
     !(await confirmYesNo(
-      'Ring, step 3 of 3:\n' +
-        '1. The app is triggering an event for the indicator to turn off. (Wait for few seconds.)\n' +
-        '2. Does the indicator (LED) change to No Call?'
+        'Ring, step 3 of 3:\n' +
+      '1. The app is triggering an event for the indicator to turn off. ' +
+      '(Wait for few seconds.)\n' +
+      '2. Does the indicator (LED) change to No Call?'
     ))
   ) {
     return false;
@@ -295,10 +370,16 @@ async function ringTestCase(deviceManager: TelephonyDeviceManager) {
   return true;
 }
 
-async function muteTestCase(deviceManager: TelephonyDeviceManager) {
+/**
+ * Test case for LED.Mute indicator.
+ * @param {TelephonyDeviceManager} deviceManager
+ * @return {boolean}
+ */
+async function muteTestCase(
+    deviceManager: TelephonyDeviceManager): Promise<boolean> {
   const statusIndicator: boolean = await confirmYesNo(
-    'Mute, step 1 of 5:\n' +
-      'Does the DUT design an indicator (LED) for Microphone Mute Status?'
+      'Mute, step 1 of 5:\n' +
+    'Does the DUT design an indicator (LED) for Microphone Mute Status?'
   );
   appendLog(`With a microphone status indicator: ${statusIndicator}`);
   if (!statusIndicator) {
@@ -307,16 +388,17 @@ async function muteTestCase(deviceManager: TelephonyDeviceManager) {
 
   appendLog('Send Led.OffHook(1) Led.Mute(1)');
   deviceManager.send(
-    new Map<OutputUsage, boolean>([
-      [LedUsage.OFF_HOOK, true],
-      [LedUsage.MUTE, true],
-    ])
+      new Map<OutputUsage, boolean>([
+        [LedUsage.OFF_HOOK, true],
+        [LedUsage.MUTE, true],
+      ])
   );
   if (
     !(await confirmYesNo(
-      'Mute, step 2 of 5:\n' +
-        '1. The app is triggering an event for the indicator to turn on. (Wait for few seconds.)\n' +
-        '2. Does the indicator (LED) show the microphone is mute?'
+        'Mute, step 2 of 5:\n' +
+      '1. The app is triggering an event for the indicator to turn on. ' +
+      '(Wait for few seconds.)\n' +
+      '2. Does the indicator (LED) show the microphone is mute?'
     ))
   ) {
     return false;
@@ -324,25 +406,27 @@ async function muteTestCase(deviceManager: TelephonyDeviceManager) {
 
   if (
     !(await confirmYesNo(
-      'Mute, step 3 of 5:\n' +
-        '1. Please use another tab to a recorder to verify if the microphone is muted.\n' +
-        '2. Is the DUT microphone muted?'
+        'Mute, step 3 of 5:\n' +
+      '1. Please use another tab to record and verify' +
+      'if the microphone is muted.\n' +
+      '2. Is the DUT microphone muted?'
     ))
   ) {
     return false;
   }
 
   deviceManager.send(
-    new Map<OutputUsage, boolean>([
-      [LedUsage.OFF_HOOK, false],
-      [LedUsage.MUTE, false],
-    ])
+      new Map<OutputUsage, boolean>([
+        [LedUsage.OFF_HOOK, false],
+        [LedUsage.MUTE, false],
+      ])
   );
   if (
     !(await confirmYesNo(
-      'Mute, step 4 of 5:\n' +
-        '1. The app is triggering an event for the indicator to turn off. (Wait for few seconds.)\n' +
-        '2. Does the indicator (LED) change to not muted?'
+        'Mute, step 4 of 5:\n' +
+      '1. The app is triggering an event for the indicator to turn off. ' +
+      '(Wait for few seconds.)\n' +
+      '2. Does the indicator (LED) change to not muted?'
     ))
   ) {
     return false;
@@ -350,9 +434,10 @@ async function muteTestCase(deviceManager: TelephonyDeviceManager) {
 
   if (
     !(await confirmYesNo(
-      'Mute, step 5 of 5:\n' +
-        '1. Please use another tab to a recorder to verify if the microphone is un-muted.\n' +
-        '2. Is the DUT microphone unmuted?'
+        'Mute, step 5 of 5:\n' +
+      '1. Please use another tab to record and verify ' +
+      'if the microphone is un-muted.\n' +
+      '2. Is the DUT microphone unmuted?'
     ))
   ) {
     return false;
@@ -360,10 +445,15 @@ async function muteTestCase(deviceManager: TelephonyDeviceManager) {
   return true;
 }
 
+/**
+ * Test case for LED.Off-Hook indicator.
+ * @param {TelephonyDeviceManager} deviceManager
+ * @return {boolean}
+ */
 async function offHookTestCase(deviceManager: TelephonyDeviceManager) {
   const callStatusIndicator: boolean = await confirmYesNo(
-    'Off Hook, step 1 of 3:\n' +
-      'Does the DUT design an indicator (LED) for Call Status?'
+      'Off Hook, step 1 of 3:\n' +
+    'Does the DUT design an indicator (LED) for Call Status?'
   );
   appendLog(`With a call status indicator: ${callStatusIndicator}`);
   if (!callStatusIndicator) {
@@ -371,38 +461,40 @@ async function offHookTestCase(deviceManager: TelephonyDeviceManager) {
     return true;
   }
   deviceManager.send(
-    new Map<OutputUsage, boolean>([
-      [LedUsage.OFF_HOOK, true],
-      [LedUsage.MUTE, false],
-    ])
+      new Map<OutputUsage, boolean>([
+        [LedUsage.OFF_HOOK, true],
+        [LedUsage.MUTE, false],
+      ])
   );
   deviceManager.send(
-    new Map<OutputUsage, boolean>([
-      [LedUsage.OFF_HOOK, true],
-      [LedUsage.MUTE, false],
-    ])
+      new Map<OutputUsage, boolean>([
+        [LedUsage.OFF_HOOK, true],
+        [LedUsage.MUTE, false],
+      ])
   );
   if (
     !(await confirmYesNo(
-      'Off Hook, step 2 of 3:\n' +
-        '1. The app is triggering an event for the indicator to turn on. (Wait for few seconds.)\n' +
-        '2. Does the indicator (LED) show an Active Call?'
+        'Off Hook, step 2 of 3:\n' +
+      '1. The app is triggering an event for the indicator to turn on. ' +
+      '(Wait for few seconds.)\n' +
+      '2. Does the indicator (LED) show an Active Call?'
     ))
   ) {
     return false;
   }
 
   deviceManager.send(
-    new Map<OutputUsage, boolean>([
-      [LedUsage.OFF_HOOK, false],
-      [LedUsage.MUTE, false],
-    ])
+      new Map<OutputUsage, boolean>([
+        [LedUsage.OFF_HOOK, false],
+        [LedUsage.MUTE, false],
+      ])
   );
   if (
     !(await confirmYesNo(
-      'Off Hook, step 3 of 3:\n' +
-        '1. The app is triggering an event for the indicator to turn off. (Wait for few seconds.)\n' +
-        '2. Does the indicator (LED) change to No Call?'
+        'Off Hook, step 3 of 3:\n' +
+      '1. The app is triggering an event for the indicator to turn off. ' +
+      '(Wait for few seconds.)\n' +
+      '2. Does the indicator (LED) change to No Call?'
     ))
   ) {
     return false;
@@ -410,7 +502,13 @@ async function offHookTestCase(deviceManager: TelephonyDeviceManager) {
   return true;
 }
 
-async function hookSwitchTestCase(deviceManager: TelephonyDeviceManager) {
+/**
+ * Test case for TelephonyUsage.HOOK_SWITCH mechanism.
+ * @param {TelephonyDeviceManager} deviceManager
+ * @return {boolean}
+ */
+async function hookSwitchTestCase(
+    deviceManager: TelephonyDeviceManager): Promise<boolean> {
   const controlType = deviceManager.getControlType(TelephonyUsage.HOOK_SWITCH);
   const waitForHookSwitch = (val: boolean, type: OnOffControlType) => {
     if (
@@ -418,18 +516,22 @@ async function hookSwitchTestCase(deviceManager: TelephonyDeviceManager) {
       (type !== OnOffControlType.ToggleSwitch &&
         type !== OnOffControlType.ToggleButton)
     ) {
-      noCallback();
+      if (noCallback) {
+        noCallback();
+      }
       return;
     }
 
-    yesCallback();
+    if (yesCallback) {
+      yesCallback();
+    }
     deviceManager.unsubscribe(TelephonyUsage.HOOK_SWITCH, waitForHookSwitch);
     appendLog('Send Led.OffHook(1) and Led.Ring(0)');
     deviceManager.send(
-      new Map<OutputUsage, boolean>([
-        [LedUsage.OFF_HOOK, true],
-        [LedUsage.RING, false],
-      ])
+        new Map<OutputUsage, boolean>([
+          [LedUsage.OFF_HOOK, true],
+          [LedUsage.RING, false],
+        ])
     );
   };
   appendLog('Test catch:');
@@ -439,11 +541,11 @@ async function hookSwitchTestCase(deviceManager: TelephonyDeviceManager) {
   deviceManager.subscribe(TelephonyUsage.HOOK_SWITCH, waitForHookSwitch);
   if (
     !(await confirmYesNo(
-      'Hook Switch, Step 1 of 2:\n' +
-        'Check the status of Hook Switch is True:\n ' +
-        '1. Press the Hook Switch button and wait.\n' +
-        '2. In the log, does HookSwitch(true) appear?\n',
-      true
+        'Hook Switch, Step 1 of 2:\n' +
+      'Check the status of Hook Switch is True:\n ' +
+      '1. Press the Hook Switch button and wait.\n' +
+      '2. In the log, does HookSwitch(true) appear?\n',
+        true
     ))
   ) {
     deviceManager.unsubscribe(TelephonyUsage.HOOK_SWITCH, waitForHookSwitch);
@@ -451,7 +553,7 @@ async function hookSwitchTestCase(deviceManager: TelephonyDeviceManager) {
     return false;
   }
 
-  await new Promise(f => setTimeout(f, 1000));
+  await new Promise((f) => setTimeout(f, 1000));
 
   appendLog('Test hang up:');
   const waitForHangUp = (val: boolean, type: OnOffControlType) => {
@@ -467,49 +569,51 @@ async function hookSwitchTestCase(deviceManager: TelephonyDeviceManager) {
   };
 
   deviceManager.subscribe(TelephonyUsage.HOOK_SWITCH, waitForHangUp);
+  const isToggle = controlType === OnOffControlType.ToggleButton;
   if (
     !(await confirmYesNo(
-      'Hook Switch, Step 2 of 2:\n' +
-        `Check the status of Hook Switch is ${
-          controlType === OnOffControlType.ToggleButton
-        }:\n ` +
-        '1. Press the Hook Switch button and wait.\n' +
-        `2. In the log, does HookSwitch(${
-          controlType === OnOffControlType.ToggleButton
-        }) appear?\n`,
-      true
+        'Hook Switch, Step 2 of 2:\n' +
+      `Check the status of Hook Switch is ${isToggle}` +
+      `${controlType === OnOffControlType.ToggleButton}:\n ` +
+      '1. Press the Hook Switch button and wait.\n' +
+      `2. In the log, does HookSwitch(${isToggle}) appear?\n`,
+        true
     ))
   ) {
     deviceManager.send(
-      new Map<OutputUsage, boolean>([
-        [LedUsage.OFF_HOOK, false],
-        [LedUsage.MUTE, false],
-      ])
+        new Map<OutputUsage, boolean>([
+          [LedUsage.OFF_HOOK, false],
+          [LedUsage.MUTE, false],
+        ])
     );
     deviceManager.unsubscribe(TelephonyUsage.HOOK_SWITCH, waitForHangUp);
     return false;
   }
   appendLog('Send Led.OffHook(0)');
   deviceManager.send(
-    new Map<OutputUsage, boolean>([
-      [LedUsage.OFF_HOOK, false],
-      [LedUsage.MUTE, false],
-    ])
+      new Map<OutputUsage, boolean>([
+        [LedUsage.OFF_HOOK, false],
+        [LedUsage.MUTE, false],
+      ])
   );
   return true;
 }
 
-function verifyTestCasesFeasibility(deviceManager: TelephonyDeviceManager) {
-  const outputReportTable = document.getElementById('test-cases')!;
+/**
+ * Check for the feasibility of each test cases.
+ * @param {TelephonyDeviceManager} deviceManager
+ */
+function verifyTestCasesFeasibility( deviceManager: TelephonyDeviceManager) {
+  const outputReportTable = document.getElementById('test-cases');
   appendLog('Valid For Test Cases:');
   if (deviceManager.supportInput(TelephonyUsage.HOOK_SWITCH)) {
     const hookSwitchBtn = document.createElement('button') as HTMLButtonElement;
     hookSwitchBtn.onclick = async () => {
       appendLog('==== Start Test Case - Hook Switch ====');
       appendLog(
-        `Test result: ${
-          (await hookSwitchTestCase(deviceManager)) ? 'Pass' : 'Fail'
-        }`
+          `Test result: ${(await hookSwitchTestCase(deviceManager)) ?
+            'Pass' : 'Fail'
+          }`
       );
     };
     hookSwitchBtn.innerText = 'Hook Switch';
@@ -522,9 +626,9 @@ function verifyTestCasesFeasibility(deviceManager: TelephonyDeviceManager) {
     offHookBtn.onclick = async () => {
       appendLog('==== Start Test Case - Off-Hook ====');
       appendLog(
-        `Test result: ${
-          (await offHookTestCase(deviceManager)) ? 'Pass' : 'Fail'
-        }`
+          `Test result: ${(await offHookTestCase(deviceManager)) ?
+             'Pass' : 'Fail'
+          }`
       );
     };
     offHookBtn.innerText = 'Off-Hook';
@@ -537,7 +641,8 @@ function verifyTestCasesFeasibility(deviceManager: TelephonyDeviceManager) {
     ringBtn.onclick = async () => {
       appendLog('==== Start Test Case - Ring ====');
       appendLog(
-        `Test result: ${(await ringTestCase(deviceManager)) ? 'Pass' : 'Fail'}`
+          `Test result: ${(await ringTestCase(deviceManager)) ?
+            'Pass' : 'Fail'}`
       );
     };
     ringBtn.innerText = 'Ring';
@@ -550,7 +655,8 @@ function verifyTestCasesFeasibility(deviceManager: TelephonyDeviceManager) {
     muteBtn.onclick = async () => {
       appendLog('==== Start Test Case - Mute ====');
       appendLog(
-        `Test result: ${(await muteTestCase(deviceManager)) ? 'Pass' : 'Fail'}`
+          `Test result: ${(await muteTestCase(deviceManager)) ?
+            'Pass' : 'Fail'}`
       );
     };
     muteBtn.innerText = 'Mute';
@@ -560,9 +666,11 @@ function verifyTestCasesFeasibility(deviceManager: TelephonyDeviceManager) {
 
   outputReportTable.hidden = false;
 }
-
+/**
+ * Main function
+ */
 async function main() {
-  document.getElementById('start')!.onclick = async () => {
+  document.getElementById('start').onclick = async () => {
     const deviceManager = await TelephonyDeviceManager.create();
     if (deviceManager === null) {
       appendLog('Failed to create the TelephonyDeviceManager');
@@ -583,8 +691,8 @@ async function main() {
     verifyTestCasesFeasibility(deviceManager);
   };
 
-  document.getElementById('clear')!.onclick = clearLog;
-  document.getElementById('copy')!.onclick = copyLog;
+  document.getElementById('clear').onclick = clearLog;
+  document.getElementById('copy').onclick = copyLog;
 }
 
 main();
