@@ -12,7 +12,7 @@
   "scripts": {
     "build": "npm run clean && tsc --build src/lib/tsconfig.json",
     "build_app": "npm run clean && tsc --build src/test_app/tsconfig.json",
-    "start": "npx webpack serve --config test_app.config.js",
+    "start": "export NODE_OPTIONS=--openssl-legacy-provider && npx webpack serve --config test_app.config.js",
     "pack": "npm run clean && npx webpack",
     "pack_app": "npm run clean && npx webpack --config test_app.config.js",
     "clean": "rimraf ./build ./dist",
